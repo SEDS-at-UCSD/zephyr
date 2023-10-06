@@ -8,38 +8,10 @@
  */
 
 #include <zephyr/logging/log.h>
-#include <zephyr/init.h>
-#include <fsl_iomuxc.h>
-#include <fsl_gpio.h>
-#include <soc.h>
-#include <zephyr/logging/log.h>
-#include <zephyr/kernel.h>
-
-#if DT_NODE_HAS_STATUS(DT_NODELABEL(enet), okay) && CONFIG_NET_L2_ETHERNET
-static gpio_pin_config_t enet_gpio_config = {
-	.direction = kGPIO_DigitalOutput,
-	.outputLogic = 0,
-	.interruptMode = kGPIO_NoIntmode
-};
-
-static int teensy4_phy_reset(const struct device *dev)
-{
-	/* RESET PHY chip. */
-	k_busy_wait(USEC_PER_MSEC * 50U); /* Power up timing T4 of PHY = 50ms */
-	GPIO_WritePinOutput(GPIO2, 14, 1);
-
-	return 0;
-}
-
-
-SYS_INIT(teensy4_phy_reset, POST_KERNEL, CONFIG_PHY_INIT_PRIORITY);
-#endif
-
-
 LOG_MODULE_REGISTER(net_dhcpv4_client_sample, LOG_LEVEL_DBG);
 
-#include <zephyr/kernel.h>
-#include <zephyr/linker/sections.h>
+#include <zephyr/device.h>
+// #include <linker/sections.h>
 #include <errno.h>
 #include <stdio.h>
 
@@ -47,6 +19,8 @@ LOG_MODULE_REGISTER(net_dhcpv4_client_sample, LOG_LEVEL_DBG);
 #include <zephyr/net/net_core.h>
 #include <zephyr/net/net_context.h>
 #include <zephyr/net/net_mgmt.h>
+
+#include <zephyr/usb/usb_device.h>
 
 static struct net_mgmt_event_callback mgmt_cb;
 
@@ -87,9 +61,11 @@ static void handler(struct net_mgmt_event_callback *cb,
 
 void main(void)
 {
-	struct net_if *iface;
+	if (usb_enable(NULL)) {
+		return;
+	}
 
-	LOG_INF("Run dhcpv4 client");
+	struct net_if *iface;
 
 	net_mgmt_init_event_callback(&mgmt_cb, handler,
 				     NET_EVENT_IPV4_ADDR_ADD);

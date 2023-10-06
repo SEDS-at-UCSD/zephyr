@@ -1,0 +1,27 @@
+
+/ {
+
+	/**
+	 * used numbers:
+	 *    	1: can
+	 * 		4: lpuart
+	 *  	6: lpuart
+	 */
+	chosen {
+		// zephyr,tracing-uart = &lpuart2;
+		zephyr,console = &lpuart4;
+		zephyr,shell-uart = &lpuart4;
+		zephyr,canbus = &flexcan3;
+	};
+};
+
+
+// pin 7/8
+&lpuart4 {
+	status = "okay";
+	current-speed = < 115200 >;
+};
+
+&enet {
+    status = "okay";
+};

@@ -8,34 +8,6 @@
  */
 
 #include <zephyr/logging/log.h>
-#include <zephyr/init.h>
-#include <fsl_iomuxc.h>
-#include <fsl_gpio.h>
-#include <soc.h>
-#include <zephyr/logging/log.h>
-#include <zephyr/kernel.h>
-
-#if DT_NODE_HAS_STATUS(DT_NODELABEL(enet), okay) && CONFIG_NET_L2_ETHERNET
-static gpio_pin_config_t enet_gpio_config = {
-	.direction = kGPIO_DigitalOutput,
-	.outputLogic = 0,
-	.interruptMode = kGPIO_NoIntmode
-};
-
-static int teensy4_phy_reset(const struct device *dev)
-{
-	/* RESET PHY chip. */
-	k_busy_wait(USEC_PER_MSEC * 50U); /* Power up timing T4 of PHY = 50ms */
-	GPIO_WritePinOutput(GPIO2, 14, 1);
-
-	return 0;
-}
-
-
-SYS_INIT(teensy4_phy_reset, POST_KERNEL, CONFIG_PHY_INIT_PRIORITY);
-#endif
-
-
 LOG_MODULE_REGISTER(net_dhcpv4_client_sample, LOG_LEVEL_DBG);
 
 #include <zephyr/kernel.h>
