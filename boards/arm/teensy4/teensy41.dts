@@ -37,3 +37,27 @@
 		status = "okay";
 	};
 };
+
+&enet {
+	status = "okay";
+	ptp {
+		status = "okay";
+	};
+	phy {
+		compatible = "ethernet-phy";
+		status = "okay";
+		no-reset;
+		late_mii_start;
+		address = <0>;
+		mdio = <&mdio>;
+	};
+	mdio: mdio {
+		compatible = "nxp,kinetis-mdio";
+		label = "MDIO_0";
+		status = "okay";
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+		// speed = < 100 >;
+	};
+};

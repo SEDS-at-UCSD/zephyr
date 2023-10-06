@@ -21,6 +21,7 @@ LOG_MODULE_REGISTER(phy_mii, CONFIG_PHY_LOG_LEVEL);
 
 struct phy_mii_dev_config {
 	uint8_t phy_addr;
+	bool late_mii_start;
 	bool no_reset;
 	bool fixed;
 	int fixed_speed;
@@ -36,6 +37,12 @@ struct phy_mii_dev_data {
 	struct k_sem sem;
 	bool gigabit_supported;
 };
+
+#define DEV_NAME(dev) ((dev)->name)
+#define DEV_DATA(dev) ((struct phy_mii_dev_data *const)(dev)->data)
+#define DEV_CFG(dev) \
+	((const struct phy_mii_dev_config *const)(dev)->config)
+
 
 /* Offset to align capabilities bits of 1000BASE-T Control and Status regs */
 #define MII_1KSTSR_OFFSET 2
@@ -265,15 +272,17 @@ static void monitor_work_handler(struct k_work *work)
 	const struct device *dev = data->dev;
 	int rc;
 
-	k_sem_take(&data->sem, K_FOREVER);
+	if (data->cb != NULL) {
+		k_sem_take(&data->sem, K_FOREVER);
 
-	rc = update_link_state(dev);
+		rc = update_link_state(dev);
 
-	k_sem_give(&data->sem);
+		k_sem_give(&data->sem);
 
-	/* If link state has changed and a callback is set, invoke callback */
-	if (rc == 0) {
-		invoke_link_cb(dev);
+		/* If link state has changed and a callback is set, invoke callback */
+		if (rc == 0) {
+			invoke_link_cb(dev);
+		}
 	}
 
 	/* Submit delayed work */
@@ -382,13 +391,45 @@ static int phy_mii_get_link_state(const struct device *dev,
 	return 0;
 }
 
+static int phy_mii_start(const struct device *dev)
+{
+	const struct phy_mii_dev_config *const cfg = DEV_CFG(dev);
+	uint32_t phy_id;
+
+	mdio_bus_enable(cfg->mdio);
+
+	if (cfg->no_reset == false) {
+		reset(dev);
+	}
+
+	if (get_id(dev, &phy_id) == 0) {
+		if (phy_id == 0xFFFFFF) {
+			LOG_ERR("No PHY found at address %d",
+				cfg->phy_addr);
+			return -EINVAL;
+		}
+
+		LOG_INF("PHY (%d) ID %X", cfg->phy_addr, phy_id);
+	}
+
+	/* Advertise all speeds */
+	phy_mii_cfg_link(dev, -1);
+
+	return 0;
+}
+
 static int phy_mii_link_cb_set(const struct device *dev, phy_callback_t cb,
 			       void *user_data)
 {
+	const struct phy_mii_dev_config *const cfg = DEV_CFG(dev);
 	struct phy_mii_dev_data *const data = dev->data;
 
 	data->cb = cb;
 	data->cb_data = user_data;
+
+	if (cfg->late_mii_start) {
+		phy_mii_start(dev);
+	}
 
 	/**
 	 * Immediately invoke the callback to notify the caller of the
@@ -403,7 +444,6 @@ static int phy_mii_initialize(const struct device *dev)
 {
 	const struct phy_mii_dev_config *const cfg = dev->config;
 	struct phy_mii_dev_data *const data = dev->data;
-	uint32_t phy_id;
 
 	k_sem_init(&data->sem, 1, 1);
 
@@ -430,32 +470,9 @@ static int phy_mii_initialize(const struct device *dev)
 	} else {
 		data->state.is_up = false;
 
-		mdio_bus_enable(cfg->mdio);
-
-		if (cfg->no_reset == false) {
-			reset(dev);
+		if (!cfg->late_mii_start) {
+			phy_mii_start(dev);
 		}
-
-		if (get_id(dev, &phy_id) == 0) {
-			if (phy_id == 0xFFFFFF) {
-				LOG_ERR("No PHY found at address %d",
-					cfg->phy_addr);
-
-				return -EINVAL;
-			}
-
-			LOG_INF("PHY (%d) ID %X\n", cfg->phy_addr, phy_id);
-		}
-
-		data->gigabit_supported = is_gigabit_supported(dev);
-
-		/* Advertise all speeds */
-		phy_mii_cfg_link(dev, LINK_HALF_10BASE_T |
-				      LINK_FULL_10BASE_T |
-				      LINK_HALF_100BASE_T |
-				      LINK_FULL_100BASE_T |
-				      LINK_HALF_1000BASE_T |
-				      LINK_FULL_1000BASE_T);
 
 		k_work_init_delayable(&data->monitor_work,
 					monitor_work_handler);
@@ -476,13 +493,15 @@ static const struct ethphy_driver_api phy_mii_driver_api = {
 	.write = phy_mii_write,
 };
 
-#define PHY_MII_CONFIG(n)						 \
-static const struct phy_mii_dev_config phy_mii_dev_config_##n = {	 \
-	.phy_addr = DT_INST_PROP(n, address),				 \
-	.fixed = IS_FIXED_LINK(n),					 \
-	.fixed_speed = DT_INST_ENUM_IDX_OR(n, fixed_link, 0),		 \
-	.mdio = UTIL_AND(UTIL_NOT(IS_FIXED_LINK(n)),			 \
-			 DEVICE_DT_GET(DT_INST_PHANDLE(n, mdio)))	 \
+#define PHY_MII_CONFIG(n)						\
+static const struct phy_mii_dev_config phy_mii_dev_config_##n = {	\
+	.phy_addr = DT_PROP(DT_DRV_INST(n), address),			\
+	.late_mii_start = DT_PROP(DT_DRV_INST(n), late_mii_start),			\
+	.no_reset = DT_PROP(DT_DRV_INST(n), no_reset),			\
+	.fixed = IS_FIXED_LINK(n),					\
+	.fixed_speed = DT_ENUM_IDX_OR(DT_DRV_INST(n), fixed_link, 0),	\
+	.mdio = UTIL_AND(UTIL_NOT(IS_FIXED_LINK(n)),			\
+			DEVICE_DT_GET(DT_PHANDLE(DT_DRV_INST(n), mdio)))\
 };
 
 #define PHY_MII_DEVICE(n)						\
