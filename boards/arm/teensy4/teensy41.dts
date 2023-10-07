@@ -56,8 +56,8 @@
 		label = "MDIO_0";
 		status = "okay";
 
-		#address-cells = <1>;
-		#size-cells = <0>;
+		// #address-cells = <1>;
+		// #size-cells = <0>;
 		// speed = < 100 >;
 	};
 };

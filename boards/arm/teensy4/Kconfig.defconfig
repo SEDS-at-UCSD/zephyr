@@ -27,6 +27,10 @@ config NET_L2_ETHERNET
 	default n if BOARD_TEENSY40
 	default y if BOARD_TEENSY41
 
+config ETH_MCUX_PHY_RESET
+	default n if BOARD_TEENSY40
+	default y if BOARD_TEENSY41
+
 endif # NETWORKING
 
 endif # BOARD_TEENSY40 || BOARD_TEENSY41
